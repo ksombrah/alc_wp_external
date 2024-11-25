@@ -9,7 +9,7 @@
  *
  * @wordpress-plugin
  * Plugin Name:       Autenticação Externa - Swagger UI
- * Plugin URI:        https://sistemas.alcionesytes.net/alc_wp_external
+ * Plugin URI:        https://github.com/ksombrah/alc_wp_external
  * Description:       Plugin para Autenticação Externa - Swagger UI
  * Version:           1.0.2
  * Requires at least: 5.2
@@ -19,7 +19,7 @@
  * Text Domain:       alc_wp_external
  * License:           GPL v2 or later
  * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
- * Update URI:        https://example.com/my-plugin/
+ * Update URI:        https://github.com/ksombrah/alc_wp_external
  */
  
  /*
