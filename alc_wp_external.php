@@ -124,7 +124,7 @@ function alc_wp_response($response)
      	}
  	}
 
-add_filter( 'authenticate', 'alc_wp_auth', 10, 3 );
+add_filter( 'authenticate', 'alc_wp_auth', 21, 3 );
 
 function alc_wp_auth( $user, $username, $password )
 	{
@@ -134,7 +134,7 @@ function alc_wp_auth( $user, $username, $password )
    	{ 
    	return;
    	}
-   if ( is_user_logged_in() ) 
+   /*if ( is_user_logged_in() ) 
    	{
 		wp_logout();
 		}
@@ -143,19 +143,12 @@ function alc_wp_auth( $user, $username, $password )
 		'user_password' => $password,
 		'remember'      => true,
    	);
-   $user = wp_signon ($creds, false);
-   if ( is_a( $user, 'WP_User' ) )
+   //tentando login
+   $user = wp_signon ($creds, false);*/
+   //verificando login
+   if ( ! $user )
    	{
-   	wp_set_current_user( $user->ID, $user->user_login );
-		
-		if ( is_user_logged_in() ) 
-			{
-			return $user;
-			}
-   	}
-   else
-   	{
-	
+   	//testando dados externamente
 	  	$response = wp_remote_get( $alc_wp_api_base_url."/login/login?userName=".urlencode($username)."&password=".$password,array('timeout' => 120, 'httpversion' => '1.1'));
 	  	$external = false;
 	  	$ext_auth = alc_wp_response($response);
@@ -187,40 +180,37 @@ function alc_wp_auth( $user, $username, $password )
 	         //$user = new WP_Error( 'denied', __("ERROR: Not a valid user for this system") );
 	
 	         // Configure as informações mínimas necessárias do usuário para este exemplo
-	         $userdata = array( 'user_email' => $ext_auth->email,
+	         /*$userdata = array( 'user_email' => $ext_auth->email,
 	                                'user_login' => $ext_auth->email,
 	                                'first_name' => $ext_auth->name,
 	                                'last_name' => $ext_auth->name,
-	                                );
-	         $new_user_id = wp_insert_user( $userdata ); // A new user has been created
+	                                );*/
+	         $new_user_id = wp_create_user( $username, $password, $ext_auth->email ); // A new user has been created
 	
 	         // Carregue as novas informações do usuário
 	         $user = new WP_User ($new_user_id);
 	         } 
-	
 	     	}
 		}
 
   	// Comente esta linha se você deseja recorrer à autenticação do WordPress
 	// Útil para momentos em que o serviço externo está offline
    //remove_action('authenticate', 'wp_authenticate_username_password', 20);
-	if ( is_a( $user, 'WP_User' ) )
+   
+	if ( ! $user )
    	{
-   	wp_set_current_user( $user->ID, $user->user_login );
-		
-		if ( is_user_logged_in() ) 
-			{
-			return $user;
-			}
+   	$user = new WP_Error( 'denied', __("ERROR: User/pass bad") );
 		}
 	return $user;
 	}
 	
-remove_filter( 'authenticate', 'alc_wp_auth', 10, 3 );
+remove_filter( 'authenticate', 'alc_wp_auth', 21, 3 );
 	
 function alc_wp_test()
 	{
 	global $alc_wp_api_base_url;
+	error_reporting( E_ALL );
+	ini_set( 'display_errors', 1 );
 	$username = "cliente@gmail.com";
 	$password = "121212";
 	$url = $alc_wp_api_base_url."/login/login?userName=".urlencode($username)."&password=".$password;
@@ -242,6 +232,7 @@ function alc_wp_test()
 	$ext_auth = wp_remote_get ($url,array('timeout' => 120, 'httpversion' => '1.1'));
 
 	//curl_close($curl);
+	$retorno = "";
 	$resultado = alc_wp_response($ext_auth);
 	if (!is_null($resultado))
 		{
@@ -249,7 +240,7 @@ function alc_wp_test()
 	
 		if (isset($resultado->token))
 			{
-			echo ($resultado->token.'<br/>');
+			$retorno .= $resultado->token.'<br/>';
 			}
 		}
    $userobj = new WP_User();
@@ -257,20 +248,20 @@ function alc_wp_test()
 	$user = new WP_User($user->ID);
 	if ($user->ID == 0)
 		{
-		echo ("NOVO");
-		$userdata = array( 'user_email' => $ext_auth->email,
+		$retorno .= "NOVO";
+		/*$userdata = array( 'user_email' => $ext_auth->email,
                              'user_login' => $ext_auth->email,
                              'first_name' => $ext_auth->name,
                              'last_name' => $ext_auth->name
-                             );
-      $new_user_id = wp_insert_user( $userdata ); // A new user has been created
+                             );*/
+      $new_user_id = wp_create_user( $username, $password, $resultado->email );; // A new user has been created
 
       // Carregue as novas informações do usuário
       $user = new WP_User ($new_user_id);
-      var_dump($user);
+      //var_dump($user);
 		}
 	
-   $retorno = $resultado."<br/>TESTE - ".$url;        
+   $retorno .= "<br/>TESTE - ".$url;        
    
 	echo '<html>'.$retorno.'</html>';
 	}
