@@ -159,9 +159,8 @@ function alc_wp_auth( $user, $username, $password )
 	  	
 	   if( !$external ) 
 	   	{
-	      // User does not exist,  send back an error message
-	      $user = new WP_Error( 'denied', __("ERROR: User/pass bad") );
-	
+	      // Usuário não existem na API
+	      $user = new WP_Error( 'denied', __("ERROR: Usuário ou Senha inválidos") );
 	     	} 
 	  	else  
 	  		{
@@ -185,10 +184,18 @@ function alc_wp_auth( $user, $username, $password )
 	                                'first_name' => $ext_auth->name,
 	                                'last_name' => $ext_auth->name,
 	                                );*/
-	         $new_user_id = wp_create_user( $username, $password, $ext_auth->email ); // A new user has been created
-	
-	         // Carregue as novas informações do usuário
-	         $user = new WP_User ($new_user_id);
+	         // Um novo usuário
+	         $new_user_id = wp_create_user( $username, $password, $ext_auth->email );
+        		if( is_wp_error( $new_user_id ) ) 
+        			{
+            	// Erro Ao Criar usuário
+            	$user = new WP_Error( 'denied', __("ERROR: Não foi possível Criar novo usuário") );
+        			}
+        		else
+        			{
+	         	// Carregue as novas informações do usuário
+	         	$user = new WP_User ($new_user_id);
+	         	}
 	         } 
 	     	}
 		}
@@ -199,7 +206,8 @@ function alc_wp_auth( $user, $username, $password )
    
 	if ( ! $user )
    	{
-   	$user = new WP_Error( 'denied', __("ERROR: User/pass bad") );
+   	//Não existe usuário
+   	$user = new WP_Error( 'denied', __("ERROR: Usuário ou Senha Inválidos") );
 		}
 	return $user;
 	}
