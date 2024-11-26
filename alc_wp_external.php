@@ -11,7 +11,7 @@
  * Plugin Name:       Autenticação Externa - Swagger UI
  * Plugin URI:        https://github.com/ksombrah/alc_wp_external
  * Description:       Plugin para Autenticação Externa - Swagger UI
- * Version:           1.0.2
+ * Version:           1.0.5
  * Requires at least: 5.2
  * Requires PHP:      7.4
  * Author:            Alcione Ferreira
@@ -41,6 +41,8 @@ global $alc_wp_external_db_version;
 $alc_wp_external_db_version = '1.0';
 global $alc_wp_api_base_url;
 $alc_wp_api_base_url = 'https://srv631324.hstgr.cloud:8081';
+global $alc_wp_log_path;
+$alc_wp_log_path = plugin_dir_path(__FILE__).'logs_erros';
 
 //require_once plugin_dir_path(__FILE__).'vendor/autoload.php';
 //require_once plugin_dir_path(__FILE__).'vendor/smarty/smartysrc/Smarty.php';
@@ -129,7 +131,8 @@ add_filter( 'authenticate', 'alc_wp_auth', 21, 3 );
 function alc_wp_auth( $user, $username, $password )
 	{
 	global $alc_wp_api_base_url;
-   // Certifique-se de que um nome de usuário e uma senha estejam presentes para que possamos trabalhar com eles
+	global $alc_wp_log_path;
+	// Certifique-se de que um nome de usuário e uma senha estejam presentes para que possamos trabalhar com eles
    if($username == '' || $password == '')
    	{ 
    	return;
@@ -146,6 +149,8 @@ function alc_wp_auth( $user, $username, $password )
    //tentando login
    $user = wp_signon ($creds, false);*/
    //verificando login
+   // another way to call error_log():
+	error_log("You messed up!", 3, $alc_wp_log_path);
    if ( ! $user )
    	{
    	//testando dados externamente
@@ -202,7 +207,7 @@ function alc_wp_auth( $user, $username, $password )
 
   	// Comente esta linha se você deseja recorrer à autenticação do WordPress
 	// Útil para momentos em que o serviço externo está offline
-   //remove_action('authenticate', 'wp_authenticate_username_password', 20);
+   remove_action('authenticate', 'wp_authenticate_username_password', 20);
    
 	if ( ! $user )
    	{
@@ -214,59 +219,55 @@ function alc_wp_auth( $user, $username, $password )
 	
 remove_filter( 'authenticate', 'alc_wp_auth', 21, 3 );
 	
-function alc_wp_test()
+function alc_wp_test($dd)
 	{
 	global $alc_wp_api_base_url;
 	error_reporting( E_ALL );
 	ini_set( 'display_errors', 1 );
-	$username = "cliente@gmail.com";
-	$password = "121212";
+	header('Content-Type: text/html');
+	$username = $dd->get_param('usuario');
+	$password = $dd->get_param('senha');
 	$url = $alc_wp_api_base_url."/login/login?userName=".urlencode($username)."&password=".$password;
 	
-	/*$curl = curl_init();
-
-	curl_setopt_array($curl, array(
-  		CURLOPT_URL => $url,
-  		CURLOPT_RETURNTRANSFER => true,
-  		CURLOPT_ENCODING => '',
-  		CURLOPT_MAXREDIRS => 10,
-  		CURLOPT_TIMEOUT => 0,
-  		CURLOPT_FOLLOWLOCATION => true,
-  		CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-  		CURLOPT_CUSTOMREQUEST => 'GET',
-		));
-
-	$ext_auth = curl_exec($curl);*/
 	$ext_auth = wp_remote_get ($url,array('timeout' => 120, 'httpversion' => '1.1'));
 
-	//curl_close($curl);
 	$retorno = "";
 	$resultado = alc_wp_response($ext_auth);
 	if (!is_null($resultado))
 		{
-		//var_dump( $resultado );
-	
 		if (isset($resultado->token))
 			{
 			$retorno .= $resultado->token.'<br/>';
 			}
-		}
-   $userobj = new WP_User();
-	$user = $userobj->get_data_by( 'email', $resultado->email ); // Does not return a WP_User object :(
-	$user = new WP_User($user->ID);
-	if ($user->ID == 0)
-		{
-		$retorno .= "NOVO";
-		/*$userdata = array( 'user_email' => $ext_auth->email,
-                             'user_login' => $ext_auth->email,
-                             'first_name' => $ext_auth->name,
-                             'last_name' => $ext_auth->name
-                             );*/
-      $new_user_id = wp_create_user( $username, $password, $resultado->email );; // A new user has been created
+		ob_start();
+		var_dump ($resultado);
+      $retorno .= ob_get_contents();        
+      ob_clean();
+   	$userobj = new WP_User();
+		$user = $userobj->get_data_by( 'email', $resultado->email ); // Does not return a WP_User object :(
+		$user = new WP_User($user->ID);
+		if ($user->ID == 0)
+			{
+			$retorno .= "NOVO";
+			$new_user_id = wp_create_user( $username, $password, $resultado->email );; // A new user has been created
 
-      // Carregue as novas informações do usuário
-      $user = new WP_User ($new_user_id);
-      //var_dump($user);
+      	// Carregue as novas informações do usuário
+      	$user = new WP_User ($new_user_id);
+			
+			ob_start();
+			var_dump ($user);
+      	$retorno .= ob_get_contents();        
+      	ob_clean();      	
+      	
+   		}
+   	else 
+   		{
+   		$retorno .= "<br/>Já Cadastrado<br/>";
+   		ob_start();
+			var_dump ($user);
+      	$retorno .= ob_get_contents();        
+      	ob_clean();
+   		}
 		}
 	
    $retorno .= "<br/>TESTE - ".$url;        
