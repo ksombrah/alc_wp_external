@@ -11,7 +11,7 @@
  * Plugin Name:       Autenticação Externa - Swagger UI
  * Plugin URI:        https://github.com/ksombrah/alc_wp_external
  * Description:       Plugin para Autenticação Externa - Swagger UI
- * Version:           1.0.5
+ * Version:           1.1.0
  * Requires at least: 5.2
  * Requires PHP:      7.4
  * Author:            Alcione Ferreira
@@ -43,6 +43,8 @@ global $alc_wp_api_base_url;
 $alc_wp_api_base_url = 'https://srv631324.hstgr.cloud:8081';
 global $alc_wp_log_path;
 $alc_wp_log_path = plugin_dir_path(__FILE__).'logs_erros';
+global $alc_wp_external_nameform;
+$alc_wp_external_nameform = 'form_name'; //trocar pelo nome do formulário usado para autenticar
 
 //require_once plugin_dir_path(__FILE__).'vendor/autoload.php';
 //require_once plugin_dir_path(__FILE__).'vendor/smarty/smartysrc/Smarty.php';
@@ -56,7 +58,21 @@ function alc_wp_iniciar_sessao()
    	{
       session_start();
     	}
+   if (isset($_SESSION['alc_wp_external']))
+   	{
+   	// Verificar validade
+		$session_timeout = 3600; // 1 hora
+		if (time() - $_SESSION['alc_wp_external']['logged_in_at'] > $session_timeout) 
+			{
+    		session_destroy();
+    		echo "Sessão expirada.";
+			}
+		}
 	}
+
+// Finalizar a sessão ao encerrar o WordPress
+add_action('wp_logout', 'alc_wp_finalizar_sessao');
+add_action('wp_login', 'alc_wp_finalizar_sessao');
 	
 function alc_wp_finalizar_sessao() 
 	{
@@ -65,18 +81,6 @@ function alc_wp_finalizar_sessao()
    	{
       // Limpa as variáveis de sessão
       $_SESSION = array();
-
-      // Se deseja matar a sessão, delete também o cookie de sessão.
-      // Nota: Isso irá destruir a sessão e não apenas os dados da sessão!
-      if ( ini_get("session.use_cookies") ) 
-      	{
-         $params = session_get_cookie_params();
-         setcookie( session_name(), '', time() - 42000,
-         	$params["path"], $params["domain"],
-            $params["secure"], $params["httponly"]
-            );
-        	}
-
      	// Finalmente, destrói a sessão.
       session_destroy();
     	}
@@ -85,13 +89,13 @@ function alc_wp_finalizar_sessao()
 // Definir uma variável de sessão
 function alc_wp_guardar_dado( $chave, $valor ) 
 	{
-   $_SESSION[$chave] = $valor;
+   $_SESSION['alc_wp_external'][$chave] = $valor;
 	}
 
 // Obter uma variável de sessão
 function alc_wp_pegar_dado( $chave ) 
 	{
-   return isset( $_SESSION[$chave] ) ? $_SESSION[$chave] : null;
+   return isset( $_SESSION['alc_wp_external'][$chave] ) ? $_SESSION['alc_wp_external'][$chave] : null;
 	}
 
 function alc_wp_external_install() 
@@ -101,11 +105,12 @@ function alc_wp_external_install()
 	require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
 
 	add_option( 'alc_wp_external_db_version', $alc_wp_external_db_version );
+	//add_filter( 'authenticate', 'alc_wp_auth', 21, 3 );
 	}
 	
 function alc_wp_external_uninstall()
 	{
-
+	//remove_filter( 'authenticate', 'alc_wp_auth', 21, 3 );
 	}
 
 function alc_wp_response($response) 
@@ -125,165 +130,42 @@ function alc_wp_response($response)
       return $data; // Manipule os dados conforme necessário
      	}
  	}
+	
+add_shortcode('show_user_name', 'alc_wp_external_show_user_name');
 
-add_filter( 'authenticate', 'alc_wp_auth', 21, 3 );
-
-function alc_wp_auth( $user, $username, $password )
+function alc_wp_external_show_user_name() 
 	{
-	global $alc_wp_api_base_url;
-	global $alc_wp_log_path;
-	// Certifique-se de que um nome de usuário e uma senha estejam presentes para que possamos trabalhar com eles
-   if($username == '' || $password == '')
-   	{ 
-   	return;
-   	}
-   /*if ( is_user_logged_in() ) 
+   if (isset($_SESSION['user_data'])) 
    	{
-		wp_logout();
-		}
-   $creds =  array (
-   	'user_login'    => $username,
-		'user_password' => $password,
-		'remember'      => true,
-   	);
-   //tentando login
-   $user = wp_signon ($creds, false);*/
-   //verificando login
-   // another way to call error_log():
-	error_log("You messed up!", 3, $alc_wp_log_path);
-   if ( ! $user )
-   	{
-   	//testando dados externamente
-	  	$response = wp_remote_get( $alc_wp_api_base_url."/login/login?userName=".urlencode($username)."&password=".$password,array('timeout' => 120, 'httpversion' => '1.1'));
-	  	$external = false;
-	  	$ext_auth = alc_wp_response($response);
-	  	if (!is_null($ext_auth))
-			{
-			$external = true;
-			}
-	  	
-	   if( !$external ) 
-	   	{
-	      // Usuário não existem na API
-	      $user = new WP_Error( 'denied', __("ERROR: Usuário ou Senha inválidos") );
-	     	} 
-	  	else  
-	  		{
-	      // External user exists, try to load the user info from the WordPress user table
-	      $userobj = new WP_User();
-	      $user = $userobj->get_data_by( 'email', $ext_auth->email ); // Does not return a WP_User object :(
-	      $user = new WP_User($user->ID); // Attempt to load up the user with that ID
-	
-	      if( $user->ID == 0 ) 
-	      	{
-	         // O usuário não existe atualmente na tabela de usuários do WordPress.
-				// Você chegou a uma bifurcação na estrada, escolha seu destino sabiamente
-
-				// Se você não quiser adicionar novos usuários ao WordPress se eles não
-				// já existirem, descomente a linha a seguir e remova o código de criação do usuário
-	         //$user = new WP_Error( 'denied', __("ERROR: Not a valid user for this system") );
-	
-	         // Configure as informações mínimas necessárias do usuário para este exemplo
-	         /*$userdata = array( 'user_email' => $ext_auth->email,
-	                                'user_login' => $ext_auth->email,
-	                                'first_name' => $ext_auth->name,
-	                                'last_name' => $ext_auth->name,
-	                                );*/
-	         // Um novo usuário
-	         $new_user_id = wp_create_user( $username, $password, $ext_auth->email );
-        		if( is_wp_error( $new_user_id ) ) 
-        			{
-            	// Erro Ao Criar usuário
-            	$user = new WP_Error( 'denied', __("ERROR: Não foi possível Criar novo usuário") );
-        			}
-        		else
-        			{
-	         	// Carregue as novas informações do usuário
-	         	$user = new WP_User ($new_user_id);
-	         	}
-	         } 
-	     	}
-		}
-
-  	// Comente esta linha se você deseja recorrer à autenticação do WordPress
-	// Útil para momentos em que o serviço externo está offline
-   remove_action('authenticate', 'wp_authenticate_username_password', 20);
-   
-	if ( ! $user )
-   	{
-   	//Não existe usuário
-   	$user = new WP_Error( 'denied', __("ERROR: Usuário ou Senha Inválidos") );
-		}
-	return $user;
+      return "Bem-vindo, " . esc_html($_SESSION['user_data']['nome']) . "!";
+    	}
+  	return "Usuário não autenticado.";
 	}
-	
-remove_filter( 'authenticate', 'alc_wp_auth', 21, 3 );
-	
-function alc_wp_test($dd)
+
+add_action('elementor_pro/init', 'alc_wp_external_register_action');
+
+function alc_wp_external_register_action() 
 	{
-	global $alc_wp_api_base_url;
-	error_reporting( E_ALL );
-	ini_set( 'display_errors', 1 );
-	header('Content-Type: text/html');
-	$username = $dd->get_param('usuario');
-	$password = $dd->get_param('senha');
-	$url = $alc_wp_api_base_url."/login/login?userName=".urlencode($username)."&password=".$password;
-	
-	$ext_auth = wp_remote_get ($url,array('timeout' => 120, 'httpversion' => '1.1'));
+   // Verifica se o Elementor Pro está ativo
+   if (!class_exists('\ElementorPro\Plugin')) 
+   	{
+      return;
+    	}
 
-	$retorno = "";
-	$resultado = alc_wp_response($ext_auth);
-	if (!is_null($resultado))
-		{
-		if (isset($resultado->token))
-			{
-			$retorno .= $resultado->token.'<br/>';
-			}
-		ob_start();
-		var_dump ($resultado);
-      $retorno .= ob_get_contents();        
-      ob_clean();
-   	$userobj = new WP_User();
-		$user = $userobj->get_data_by( 'email', $resultado->email ); // Does not return a WP_User object :(
-		$user = new WP_User($user->ID);
-		if ($user->ID == 0)
-			{
-			$retorno .= "NOVO";
-			$new_user_id = wp_create_user( $username, $password, $resultado->email );; // A new user has been created
+  	// Obtém o módulo de formulários do Elementor Pro
+   $module = \ElementorPro\Plugin::instance()->modules_manager->get_modules('forms');
 
-      	// Carregue as novas informações do usuário
-      	$user = new WP_User ($new_user_id);
-			
-			ob_start();
-			var_dump ($user);
-      	$retorno .= ob_get_contents();        
-      	ob_clean();      	
-      	
-   		}
-   	else 
-   		{
-   		$retorno .= "<br/>Já Cadastrado<br/>";
-   		ob_start();
-			var_dump ($user);
-      	$retorno .= ob_get_contents();        
-      	ob_clean();
-   		}
-		}
-	
-   $retorno .= "<br/>TESTE - ".$url;        
-   
-	echo '<html>'.$retorno.'</html>';
+   if (!$module) 
+   	{
+      // Caso o módulo de formulários não esteja ativo
+      error_log('Módulo de formulários não encontrado.');
+      return;
+    	}
+
+    // Registra a ação personalizada
+   require_once __DIR__ . '/alc_wp_external_acao.php'; // Atualize o caminho corretamente
+   $module->add_form_action('alc_wp_external_form', new \alc_wp_external_acao\alc_wp_external_form());
 	}
-	
-add_action( 'rest_api_init', function () 
-	{
-  	register_rest_route( 'widgets', '/alc_wp_external_login', array(
-    	'methods' => 'GET',
-    	'callback' => 'alc_wp_test',
-    	'permission_callback' => '__return_true',
-  		) 
-  		);
-	});
 	
 register_activation_hook( __FILE__, 'alc_wp_external_install');
 
