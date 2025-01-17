@@ -11,7 +11,7 @@
  * Plugin Name:       Autenticação Externa - Swagger UI
  * Plugin URI:        https://github.com/ksombrah/alc_wp_external
  * Description:       Plugin para Autenticação Externa - Swagger UI
- * Version:           1.1.0
+ * Version:           1.1.1
  * Requires at least: 5.2
  * Requires PHP:      7.4
  * Author:            Alcione Ferreira
@@ -135,13 +135,13 @@ add_shortcode('show_user_name', 'alc_wp_external_show_user_name');
 
 function alc_wp_external_show_user_name() 
 	{
-   if (isset($_SESSION['user_data'])) 
+   if (isset($_SESSION['alc_wp_external'])) 
    	{
-      return "Bem-vindo, " . esc_html($_SESSION['user_data']['nome']) . "!";
+      return "Bem-vindo, " . esc_html($_SESSION['alc_wp_external']['nome']) . "!";
     	}
   	return "Usuário não autenticado.";
 	}
-
+	
 add_action('elementor_pro/init', 'alc_wp_external_register_action');
 
 function alc_wp_external_register_action() 
@@ -149,6 +149,7 @@ function alc_wp_external_register_action()
    // Verifica se o Elementor Pro está ativo
    if (!class_exists('\ElementorPro\Plugin')) 
    	{
+      error_log('Elementor Pro não está ativo.');
       return;
     	}
 
@@ -158,12 +159,22 @@ function alc_wp_external_register_action()
    if (!$module) 
    	{
       // Caso o módulo de formulários não esteja ativo
-      error_log('Módulo de formulários não encontrado.');
+      error_log('Módulo de formulários do Elementor Pro não encontrado.');
       return;
     	}
 
-    // Registra a ação personalizada
-   require_once __DIR__ . '/alc_wp_external_acao.php'; // Atualize o caminho corretamente
+ 	// Verifica se o arquivo de ação personalizada existe
+   $action_file = __DIR__ . '/alc_wp_external_acao.php';
+   if (!file_exists($action_file)) 
+   	{
+      error_log('Arquivo de ação personalizada não encontrado: ' . $action_file);
+      return;
+    	}
+
+  	// Inclui a classe da ação personalizada
+   require_once $action_file;
+
+   // Registra a ação personalizada no Elementor Pro
    $module->add_form_action('alc_wp_external_form', new \alc_wp_external_acao\alc_wp_external_form());
 	}
 	
